@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   postgres:
-    image: postgres:latest
+    image: postgres:14
     container_name: apotek_db
     environment:
       POSTGRES_USER: apotek_user
@@ -12,21 +12,23 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U apotek_user -d apotek_db"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  flask:
+  api:
     build: .
-    container_name: apotek_flask
+    container_name: apotek_api
     ports:
       - "5000:5000"
     environment:
-      - DATABASE_URL=postgresql://apotek_user:password@postgres:5432/apotek_db
       - FLASK_APP=app.py
       - FLASK_ENV=development
+      - DOCKER_ENV=true
+      - DATABASE_URL=postgresql://apotek_user:password@postgres:5432/apotek_db
     depends_on:
       postgres:
         condition: service_healthy

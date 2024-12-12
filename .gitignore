@@ -1,11 +1,26 @@
-# Ignore the 'lasti' folder
-lasti/
-
-venv/
-
-# Ignore Python cache files
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
 
-# Ignore environment files
+# Environment variables
 .env
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite3
+
+# Docker
+postgres_data/
