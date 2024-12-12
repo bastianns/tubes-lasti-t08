@@ -12,6 +12,27 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apotek_user -d apotek_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  flask:
+    build: .
+    container_name: apotek_flask
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://apotek_user:password@postgres:5432/apotek_db
+      - FLASK_APP=app.py
+      - FLASK_ENV=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    restart: unless-stopped
 
 volumes:
   postgres_data:

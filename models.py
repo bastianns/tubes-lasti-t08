@@ -19,10 +19,17 @@ class Transaksi(db.Model):
     __tablename__ = 'transaksi'
 
     id_transaksi = db.Column(db.Integer, primary_key=True)
-    sku = db.Column(db.String(100), db.ForeignKey('inventory.sku'), nullable=False)
+    sku = db.Column(db.String(100), nullable=False)
     batch_number = db.Column(db.String(50), nullable=False)
     jenis_transaksi = db.Column(db.String(50), nullable=False)
     jumlah = db.Column(db.Integer, nullable=False)
     amount = db.Column(db.Numeric, nullable=False)
     waktu_transaksi = db.Column(db.DateTime, default=db.func.now())
+    
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ['sku', 'batch_number'],
+            ['inventory.sku', 'inventory.batch_number']
+        ),
+    )
 

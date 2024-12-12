@@ -4,3 +4,4 @@ flask-cors
 psycopg2-binary
 pytest
 python-dotenv
+gunicorn

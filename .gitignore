@@ -1,6 +1,8 @@
 # Ignore the 'lasti' folder
 lasti/
 
+venv/
+
 # Ignore Python cache files
 __pycache__/
 *.py[cod]
