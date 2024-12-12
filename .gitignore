@@ -1,11 +1,34 @@
-# Ignore the 'lasti' folder
-lasti/
-
-venv/
-
-# Ignore Python cache files
+# Backend (Python) specific
+backend/venv/
 __pycache__/
 *.py[cod]
-
-# Ignore environment files
+*$py.class
+*.so
+.Python
 .env
+.env.local
+.pytest_cache/
+*.log
+
+# Frontend (React) specific
+frontend/node_modules/
+frontend/build/
+frontend/.env
+frontend/.env.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/coverage/
+
+# IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker specific
+.docker/
+
+# Database
+*.sqlite3
+postgres_data/

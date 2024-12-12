@@ -1,6 +1,39 @@
 version: "3.8"
 
 services:
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: apotek_frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://backend:5000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: apotek_flask
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://apotek_user:password@postgres:5432/apotek_db
+      - FLASK_APP=app.py
+      - FLASK_ENV=development
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   postgres:
     image: postgres:latest
     container_name: apotek_db
@@ -17,22 +50,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  flask:
-    build: .
-    container_name: apotek_flask
-    ports:
-      - "5000:5000"
-    environment:
-      - DATABASE_URL=postgresql://apotek_user:password@postgres:5432/apotek_db
-      - FLASK_APP=app.py
-      - FLASK_ENV=development
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - .:/app
-    restart: unless-stopped
 
 volumes:
   postgres_data:
