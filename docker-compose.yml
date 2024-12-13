@@ -1,25 +1,27 @@
-version: "3.8"
+version: '3.8'
 
 services:
-  postgres:
-    image: postgres:latest
-    container_name: apotek_db
-    environment:
-      POSTGRES_USER: apotek_user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: apotek_db
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: apotek_frontend
     ports:
-      - "5432:5432"
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://backend:5000
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U apotek_user -d apotek_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - apotek_network
 
-  flask:
-    build: .
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: apotek_flask
     ports:
       - "5000:5000"
@@ -27,12 +29,46 @@ services:
       - DATABASE_URL=postgresql://apotek_user:password@postgres:5432/apotek_db
       - FLASK_APP=app.py
       - FLASK_ENV=development
+      - SECRET_KEY=your_secret_key_here
+      - JWT_SECRET_KEY=your_jwt_secret_here
+    volumes:
+      - ./backend:/backend
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - apotek_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: apotek_db
+    environment:
+      - POSTGRES_USER=apotek_user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=apotek_db
+    ports:
+      - "5432:5432"
     volumes:
-      - .:/app
-    restart: unless-stopped
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    networks:
+      - apotek_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apotek_user -d apotek_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  apotek_network:
+    driver: bridge
 
 volumes:
   postgres_data:
+    driver: local
