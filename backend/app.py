@@ -1,4 +1,4 @@
-# app.py
+# /backend/app.py
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -13,10 +13,6 @@ logger = logging.getLogger(__name__)
 db = SQLAlchemy()
 
 def create_app(config_class=Config):
-    """
-    Application factory function that creates and configures the Flask app.
-    Includes proper error handling and database initialization.
-    """
     app = Flask(__name__)
     app.config.from_object(config_class)
     
@@ -36,26 +32,6 @@ def create_app(config_class=Config):
         except Exception as e:
             logger.error(f"Error creating database tables: {str(e)}")
     
-    # Error handlers
-    @app.errorhandler(404)
-    def not_found_error(error):
-        return {
-            'error': 'Not found',
-            'message': 'The requested URL was not found on the server.'
-        }, 404
-
-    @app.errorhandler(500)
-    def internal_error(error):
-        db.session.rollback()  # Roll back db session in case of error
-        return {
-            'error': 'Internal server error',
-            'message': str(error)
-        }, 500
-
     return app
 
-# Create the application instance
 app = create_app()
-
-if __name__ == '__main__':
-    app.run()

@@ -1,6 +1,6 @@
 # models.py
 from app import db
-from datetime import datetime
+from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 
 class User(db.Model):
@@ -26,7 +26,11 @@ class Inventory(db.Model):
     stok_tersedia = db.Column(db.Integer, default=0)
     stok_minimum = db.Column(db.Integer, default=10)
     harga = db.Column(db.Float, nullable=False)
-    waktu_pembaruan = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    waktu_pembaruan = db.Column(
+        db.DateTime, 
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
 
 class Transaksi(db.Model):
     __tablename__ = 'transaksi'
@@ -37,7 +41,10 @@ class Transaksi(db.Model):
     jenis_transaksi = db.Column(db.String(50), nullable=False)
     jumlah = db.Column(db.Integer, nullable=False)
     amount = db.Column(db.Float, nullable=False)
-    waktu_transaksi = db.Column(db.DateTime, default=datetime.utcnow)
+    waktu_transaksi = db.Column(
+        db.DateTime, 
+        default=lambda: datetime.now(timezone.utc)
+    )
     
     __table_args__ = (
         db.ForeignKeyConstraint(

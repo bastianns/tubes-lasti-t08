@@ -1,8 +1,9 @@
 # routes.py
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request
 from models import User, Inventory, Transaksi
 from app import db
 from utils import token_required, create_token, calculate_monthly_sales
+from state import blacklisted_tokens
 from sqlalchemy import extract, text
 from datetime import datetime
 import logging
@@ -10,49 +11,86 @@ import logging
 # Configure logger
 logger = logging.getLogger(__name__)
 
-# Create Blueprint for routing
+# Create Blueprint
 main = Blueprint('main', __name__)
 
-@main.route('/health')
-def health_check():
-    """Check the health status of the application and database connection."""
-    try:
-        # Test database connection
-        db.session.execute(text('SELECT 1'))
-        db.session.commit()
-        
-        return jsonify({
-            'status': 'healthy',
-            'database': 'connected',
-            'timestamp': datetime.utcnow().isoformat(),
-            'environment': current_app.config['FLASK_ENV']
-        }), 200
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        db.session.rollback()
-        
-        return jsonify({
-            'status': 'unhealthy',
-            'database': 'disconnected',
-            'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
-        }), 500
-
+# 1. Login endpoint
 @main.route('/login', methods=['POST'])
 def login():
-    """Handle user authentication and return JWT token."""
     data = request.json
-    user = User.query.filter_by(username=data.get('username')).first()
+    username = data.get('username')
+    password = data.get('password')
     
-    if user and user.check_password(data.get('password')):
+    # Detailed logging
+    logger.info(f"Login attempt - Username: {username}")
+    
+    # Find the user
+    user = User.query.filter_by(username=username).first()
+    
+    if not user:
+        logger.warning(f"User not found: {username}")
+        return jsonify({'message': 'Invalid credentials', 'debug': 'User not found'}), 401
+    
+    # Debug: print the stored password hash
+    logger.info(f"Stored password hash: {user.password_hash}")
+    
+    # Check password
+    password_check = user.check_password(password)
+    logger.info(f"Password check result: {password_check}")
+    
+    if password_check:
         token = create_token(user.id)
         return jsonify({'token': token}), 200
-    return jsonify({'message': 'Invalid credentials'}), 401
+    
+    return jsonify({'message': 'Invalid credentials', 'debug': 'Password check failed'}), 401
 
+# 2. Logout endpoint
+@main.route('/logout', methods=['POST'])
+@token_required
+def logout():
+    token = request.headers.get('Authorization').split()[1]
+    blacklisted_tokens.add(token)
+    return jsonify({'message': 'Successfully logged out'}), 200
+
+# 3. Get stock levels
+@main.route('/inventory', methods=['GET'])
+@token_required
+def get_inventory():
+    # Get optional query parameters for filtering
+    category = request.args.get('category')
+    search = request.args.get('search')
+    
+    query = Inventory.query
+    
+    # Apply filters if provided
+    if category:
+        query = query.filter(Inventory.kategori == category)
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            db.or_(
+                Inventory.nama_item.ilike(search_term),
+                Inventory.sku.ilike(search_term)
+            )
+        )
+    
+    inventory_items = query.all()
+    
+    return jsonify([{
+        'sku': item.sku,
+        'batch_number': item.batch_number,
+        'nama_item': item.nama_item,
+        'kategori': item.kategori,
+        'stok_tersedia': item.stok_tersedia,
+        'stok_minimum': item.stok_minimum,
+        'harga': item.harga,
+        'waktu_pembaruan': item.waktu_pembaruan.isoformat() if item.waktu_pembaruan else None
+    } for item in inventory_items]), 200
+
+# 4. Get low stock products
 @main.route('/inventory/low-stock', methods=['GET'])
 @token_required
 def get_low_stock():
-    """Get inventory items with stock at or below minimum level."""
     low_stock_items = Inventory.query.filter(
         Inventory.stok_tersedia <= Inventory.stok_minimum
     ).all()
@@ -61,15 +99,71 @@ def get_low_stock():
         'sku': item.sku,
         'nama_item': item.nama_item,
         'stok_tersedia': item.stok_tersedia,
-        'stok_minimum': item.stok_minimum,
-        'kategori': item.kategori,
-        'batch_number': item.batch_number
+        'stok_minimum': item.stok_minimum
     } for item in low_stock_items]), 200
 
+# 5. Update inventory
+@main.route('/inventory/<sku>', methods=['PUT'])
+@token_required
+def update_inventory(sku):
+    data = request.json
+    try:
+        inventory = Inventory.query.filter_by(sku=sku).first()
+        if not inventory:
+            return jsonify({'message': 'Item not found'}), 404
+        
+        for key, value in data.items():
+            setattr(inventory, key, value)
+        
+        db.session.commit()
+        return jsonify({'message': 'Inventory updated successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+
+# 6. Transaction endpoints
+@main.route('/transactions', methods=['POST', 'GET'])
+@token_required
+def handle_transactions():
+    if request.method == 'GET':
+        transactions = Transaksi.query.all()
+        return jsonify([{
+            'id_transaksi': t.id_transaksi,
+            'sku': t.sku,
+            'jumlah': t.jumlah,
+            'amount': t.amount,
+            'waktu_transaksi': t.waktu_transaksi
+        } for t in transactions]), 200
+    
+    data = request.json
+    try:
+        with db.session.begin():
+            # Create new transaction
+            transaction = Transaksi(**data)
+            db.session.add(transaction)
+            
+            # Update inventory
+            inventory = Inventory.query.filter_by(
+                sku=data['sku'], 
+                batch_number=data['batch_number']
+            ).with_for_update().first()
+            
+            if data['jenis_transaksi'] == 'pengurangan':
+                if inventory.stok_tersedia < data['jumlah']:
+                    raise ValueError('Insufficient stock')
+                inventory.stok_tersedia -= data['jumlah']
+            else:
+                inventory.stok_tersedia += data['jumlah']
+        
+        return jsonify({'message': 'Transaction successful'}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
+    
+# 7. Get monthly sales
 @main.route('/transactions/monthly-sales', methods=['GET'])
 @token_required
 def get_monthly_sales():
-    """Get total sales for a specific month and year."""
     year = request.args.get('year', datetime.now().year, type=int)
     month = request.args.get('month', datetime.now().month, type=int)
     
@@ -79,92 +173,26 @@ def get_monthly_sales():
         'month': month,
         'total_sales': total_sales
     }), 200
-
-@main.route('/transactions', methods=['POST', 'GET'])
-@token_required
-def handle_transactions():
-    """Handle transaction creation and retrieval."""
-    if request.method == 'GET':
-        transactions = Transaksi.query.order_by(Transaksi.waktu_transaksi.desc()).all()
-        return jsonify([{
-            'id_transaksi': t.id_transaksi,
-            'sku': t.sku,
-            'batch_number': t.batch_number,
-            'jenis_transaksi': t.jenis_transaksi,
-            'jumlah': t.jumlah,
-            'amount': t.amount,
-            'waktu_transaksi': t.waktu_transaksi.isoformat()
-        } for t in transactions]), 200
     
-    data = request.json
+# 8. Check database connection health
+@main.route('/health')
+def health_check():
     try:
-        with db.session.begin():
-            # Lock the inventory record for update
-            inventory = Inventory.query.filter_by(
-                sku=data['sku'],
-                batch_number=data['batch_number']
-            ).with_for_update().first()
-            
-            if not inventory:
-                raise ValueError('Inventory item not found')
-            
-            # Validate and update inventory stock
-            if data['jenis_transaksi'] == 'pengurangan':
-                if inventory.stok_tersedia < data['jumlah']:
-                    raise ValueError(f'Insufficient stock. Available: {inventory.stok_tersedia}, Requested: {data["jumlah"]}')
-                inventory.stok_tersedia -= data['jumlah']
-            elif data['jenis_transaksi'] == 'penambahan':
-                inventory.stok_tersedia += data['jumlah']
-            else:
-                raise ValueError('Invalid transaction type')
-            
-            # Create transaction record
-            transaction = Transaksi(**data)
-            db.session.add(transaction)
-        
+        # Test database connection
+        db.session.execute(text('SELECT 1'))
         return jsonify({
-            'message': 'Transaction successful',
-            'new_stock_level': inventory.stok_tersedia
-        }), 201
-        
-    except ValueError as e:
-        logger.error(f"Transaction error: {str(e)}")
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
-    except Exception as e:
-        logger.error(f"Unexpected error in transaction: {str(e)}")
-        db.session.rollback()
-        return jsonify({'error': 'Internal server error'}), 500
-
-@main.route('/inventory/<sku>', methods=['PUT'])
-@token_required
-def update_inventory(sku):
-    """Update inventory item details."""
-    data = request.json
-    try:
-        inventory = Inventory.query.filter_by(sku=sku).first()
-        if not inventory:
-            return jsonify({'message': 'Item not found'}), 404
-        
-        # Update only allowed fields
-        allowed_fields = {'nama_item', 'kategori', 'stok_minimum', 'harga'}
-        for key, value in data.items():
-            if key in allowed_fields:
-                setattr(inventory, key, value)
-        
-        db.session.commit()
-        return jsonify({
-            'message': 'Inventory updated successfully',
-            'inventory': {
-                'sku': inventory.sku,
-                'nama_item': inventory.nama_item,
-                'kategori': inventory.kategori,
-                'stok_tersedia': inventory.stok_tersedia,
-                'stok_minimum': inventory.stok_minimum,
-                'harga': inventory.harga
-            }
+            'status': 'healthy',
+            'database': 'connected'
         }), 200
     except Exception as e:
-        logger.error(f"Error updating inventory: {str(e)}")
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
+        return jsonify({
+            'status': 'unhealthy',
+            'database': 'disconnected',
+            'error': str(e)
+        }), 500
+
+@main.route('/debug/users', methods=['GET'])
+def debug_users():
+    users = User.query.all()
+    user_list = [{'id': u.id, 'username': u.username, 'password_hash': u.password_hash} for u in users]
+    return jsonify(user_list), 200
