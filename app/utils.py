@@ -3,15 +3,16 @@
 from functools import wraps
 from flask import jsonify, request
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from config import Config
 from app import db
+from app.state import blacklisted_tokens
 
 def create_token(user_id):
     """Create JWT token for authentication"""
     payload = {
         'user_id': user_id,
-        'exp': datetime.utcnow() + timedelta(hours=1)
+        'exp': datetime.now(timezone.utc) + timedelta(hours=1)
     }
     return jwt.encode(payload, Config.JWT_SECRET_KEY, algorithm='HS256')
 
@@ -24,6 +25,8 @@ def token_required(f):
             return jsonify({'message': 'Token is missing!'}), 401
         try:
             token = token.split()[1]  # Remove 'Bearer ' prefix
+            if token in blacklisted_tokens:
+                return jsonify({'message': 'Token has been invalidated'}), 401
             data = jwt.decode(token, Config.JWT_SECRET_KEY, algorithms=['HS256'])
         except:
             return jsonify({'message': 'Token is invalid!'}), 401

@@ -5,16 +5,17 @@ services:
     image: postgres:14
     container_name: apotek_db
     environment:
-      POSTGRES_USER: apotek_user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: apotek_db
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5432:5432"
+      - "${DB_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U apotek_user -d apotek_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,7 +29,10 @@ services:
       - FLASK_APP=app.py
       - FLASK_ENV=development
       - DOCKER_ENV=true
-      - DATABASE_URL=postgresql://apotek_user:password@postgres:5432/apotek_db
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_PORT=${DB_PORT}
     depends_on:
       postgres:
         condition: service_healthy

@@ -4,7 +4,8 @@ from flask import Blueprint, jsonify, request
 from app import db
 from app.models import User, Inventory, Transaksi
 from app.utils import token_required, create_token, calculate_monthly_sales
-from sqlalchemy import extract
+from app.state import blacklisted_tokens
+from sqlalchemy import extract, text
 from datetime import datetime
 
 # Create Blueprint
@@ -21,7 +22,50 @@ def login():
         return jsonify({'token': token}), 200
     return jsonify({'message': 'Invalid credentials'}), 401
 
-# 2. Get low stock products
+# 2. Logout endpoint
+@main.route('/logout', methods=['POST'])
+@token_required
+def logout():
+    token = request.headers.get('Authorization').split()[1]
+    blacklisted_tokens.add(token)
+    return jsonify({'message': 'Successfully logged out'}), 200
+
+# 3. Get stock levels
+@main.route('/inventory', methods=['GET'])
+@token_required
+def get_inventory():
+    # Get optional query parameters for filtering
+    category = request.args.get('category')
+    search = request.args.get('search')
+    
+    query = Inventory.query
+    
+    # Apply filters if provided
+    if category:
+        query = query.filter(Inventory.kategori == category)
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            db.or_(
+                Inventory.nama_item.ilike(search_term),
+                Inventory.sku.ilike(search_term)
+            )
+        )
+    
+    inventory_items = query.all()
+    
+    return jsonify([{
+        'sku': item.sku,
+        'batch_number': item.batch_number,
+        'nama_item': item.nama_item,
+        'kategori': item.kategori,
+        'stok_tersedia': item.stok_tersedia,
+        'stok_minimum': item.stok_minimum,
+        'harga': item.harga,
+        'waktu_pembaruan': item.waktu_pembaruan.isoformat() if item.waktu_pembaruan else None
+    } for item in inventory_items]), 200
+
+# 4. Get low stock products
 @main.route('/inventory/low-stock', methods=['GET'])
 @token_required
 def get_low_stock():
@@ -36,21 +80,26 @@ def get_low_stock():
         'stok_minimum': item.stok_minimum
     } for item in low_stock_items]), 200
 
-# 3. Get monthly sales
-@main.route('/transactions/monthly-sales', methods=['GET'])
+# 5. Update inventory
+@main.route('/inventory/<sku>', methods=['PUT'])
 @token_required
-def get_monthly_sales():
-    year = request.args.get('year', datetime.now().year, type=int)
-    month = request.args.get('month', datetime.now().month, type=int)
-    
-    total_sales = calculate_monthly_sales(year, month)
-    return jsonify({
-        'year': year,
-        'month': month,
-        'total_sales': total_sales
-    }), 200
+def update_inventory(sku):
+    data = request.json
+    try:
+        inventory = Inventory.query.filter_by(sku=sku).first()
+        if not inventory:
+            return jsonify({'message': 'Item not found'}), 404
+        
+        for key, value in data.items():
+            setattr(inventory, key, value)
+        
+        db.session.commit()
+        return jsonify({'message': 'Inventory updated successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
-# 4. Transaction endpoints
+# 6. Transaction endpoints
 @main.route('/transactions', methods=['POST', 'GET'])
 @token_required
 def handle_transactions():
@@ -88,32 +137,27 @@ def handle_transactions():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
-
-# 5. Update inventory
-@main.route('/inventory/<sku>', methods=['PUT'])
-@token_required
-def update_inventory(sku):
-    data = request.json
-    try:
-        inventory = Inventory.query.filter_by(sku=sku).first()
-        if not inventory:
-            return jsonify({'message': 'Item not found'}), 404
-        
-        for key, value in data.items():
-            setattr(inventory, key, value)
-        
-        db.session.commit()
-        return jsonify({'message': 'Inventory updated successfully'}), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
     
-# 6. Check database connection health
+# 7. Get monthly sales
+@main.route('/transactions/monthly-sales', methods=['GET'])
+@token_required
+def get_monthly_sales():
+    year = request.args.get('year', datetime.now().year, type=int)
+    month = request.args.get('month', datetime.now().month, type=int)
+    
+    total_sales = calculate_monthly_sales(year, month)
+    return jsonify({
+        'year': year,
+        'month': month,
+        'total_sales': total_sales
+    }), 200
+    
+# 8. Check database connection health
 @main.route('/health')
 def health_check():
     try:
         # Test database connection
-        db.session.execute('SELECT 1')
+        db.session.execute(text('SELECT 1'))
         return jsonify({
             'status': 'healthy',
             'database': 'connected'
