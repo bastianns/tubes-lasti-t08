@@ -15,11 +15,11 @@ const navigation = [
   { name: "Transactions", href: "/transactions", icon: ShoppingCartIcon },
 ];
 
-export const DashboardLayout = ({
-  children,
-}: {
+interface DashboardLayoutProps {
   children: React.ReactNode;
-}) => {
+}
+
+const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -96,16 +96,19 @@ export const DashboardLayout = ({
               onClick={handleLogout}
               className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
             >
-              <ArrowRightOnRectangleIcon className="h-5 w-5 mr-2" />{" "}
-              {/* Changed from LogOutIcon */}
+              <ArrowRightOnRectangleIcon className="h-5 w-5 mr-2" />
               Logout
             </button>
           </div>
         </div>
 
         {/* Page Content */}
-        <div className="p-6">{children}</div>
+        <div className="p-6">
+          {children}  {/* This line was missing - it's crucial for rendering the dashboard content */}
+        </div>
       </div>
     </div>
   );
 };
+
+export default DashboardLayout;

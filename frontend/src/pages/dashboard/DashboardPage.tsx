@@ -1,34 +1,59 @@
 // src/pages/dashboard/DashboardPage.tsx
 import { useEffect, useState } from 'react';
-import api from '../../utils/axios';
+import { subMonths, format } from 'date-fns';
+import { dashboardApi, LowStockItem } from './api/dashboardApi';
+import { SalesChart } from './components/SalesChart';
+import { StockStatus } from './components/StockStatus';
 
-interface LowStockItem {
-  sku: string;
-  nama_item: string;
-  stok_tersedia: number;
-  stok_minimum: number;
+interface ChartData {
+  date: string;
+  sales: number;
 }
 
 export const DashboardPage = () => {
+  const [salesData, setSalesData] = useState<ChartData[]>([]);
   const [lowStockItems, setLowStockItems] = useState<LowStockItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchLowStockItems = async () => {
+    const fetchData = async () => {
       try {
-        const response = await api.get('/inventory/low-stock');
-        setLowStockItems(response.data);
+        setIsLoading(true);
+        setError(null);
+
+        // Fetch sales data for last 12 months
+        const currentDate = new Date();
+        const monthlyData: ChartData[] = [];
+
+        for (let i = 0; i < 12; i++) {
+          const date = subMonths(currentDate, i);
+          const year = date.getFullYear();
+          const month = date.getMonth() + 1;
+
+          const salesResponse = await dashboardApi.getMonthlySales(year, month);
+          monthlyData.unshift({
+            date: format(date, 'MMM yyyy'),
+            sales: salesResponse.total_sales
+          });
+        }
+
+        setSalesData(monthlyData);
+
+        // Fetch low stock items
+        const lowStockResponse = await dashboardApi.getLowStockItems();
+        setLowStockItems(lowStockResponse);
+
       } catch (err) {
-        setError('Failed to fetch low stock items');
-        console.error('Error fetching low stock items:', err);
+        setError('Failed to fetch dashboard data');
+        console.error('Error fetching dashboard data:', err);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchLowStockItems();
-  }, []);
+    fetchData();
+  }, []); // Empty dependency array means this runs once on mount
 
   if (isLoading) {
     return (
@@ -47,68 +72,9 @@ export const DashboardPage = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-      
-      {/* Low Stock Alert Section */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Low Stock Alerts
-          </h2>
-          
-          {lowStockItems.length === 0 ? (
-            <p className="text-gray-500">No items are currently low in stock.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead>
-                  <tr>
-                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      SKU
-                    </th>
-                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Item Name
-                    </th>
-                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Current Stock
-                    </th>
-                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Minimum Stock
-                    </th>
-                    <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {lowStockItems.map((item) => (
-                    <tr key={item.sku}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {item.sku}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {item.nama_item}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {item.stok_tersedia}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {item.stok_minimum}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                          Low Stock
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
+    <div className="space-y-8 px-4">
+      <SalesChart data={salesData} />
+      <StockStatus items={lowStockItems} />
     </div>
   );
 };

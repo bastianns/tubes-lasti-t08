@@ -2,9 +2,11 @@ from functools import wraps
 from flask import jsonify, request
 import jwt
 from datetime import datetime, timedelta, timezone
+from sqlalchemy import extract  # Added this import
 from config import Config
 from app import db
 from state import blacklisted_tokens
+from models import Transaksi
 
 def create_token(user_id):
     """Create JWT token for authentication"""
@@ -33,9 +35,6 @@ def token_required(f):
 
 def calculate_monthly_sales(year=None, month=None):
     """Calculate total sales for a given month"""
-    from app.models import Transaksi
-    from sqlalchemy import extract
-    
     query = Transaksi.query
     if year and month:
         query = query.filter(
