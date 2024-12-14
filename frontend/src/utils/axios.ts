@@ -1,38 +1,39 @@
 // src/utils/axios.ts
-
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
-const axiosInstance = axios.create({
-  baseURL,
+const api = axios.create({
+  baseURL: 'http://localhost:5000',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-axiosInstance.interceptors.request.use(
+// Add request interceptor for debugging
+api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    console.log('Making request to:', config.url, config.data);
     return config;
   },
   (error) => {
+    console.error('Request error:', error);
     return Promise.reject(error);
   }
 );
 
-axiosInstance.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+// Add response interceptor for debugging
+api.interceptors.response.use(
+  (response) => {
+    console.log('Response:', response.data);
+    return response;
+  },
+  (error) => {
+    console.error('Response error:', error);
+    if (error.response) {
+      console.error('Error data:', error.response.data);
+      console.error('Error status:', error.response.status);
     }
     return Promise.reject(error);
   }
 );
 
-export default axiosInstance;
+export default api;

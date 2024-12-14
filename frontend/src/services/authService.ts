@@ -1,29 +1,40 @@
 // src/services/authService.ts
+import api from '../utils/axios';
 
-import axiosInstance from '../utils/axios';
-import { LoginCredentials, LoginResponse } from '../interfaces/auth';
+interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+interface LoginResponse {
+  token: string;
+}
 
 export const authService = {
-  login: async (credentials: LoginCredentials): Promise<string> => {
+  login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
+    console.log('Attempting login with:', credentials);
     try {
-      const response = await axiosInstance.post<LoginResponse>('/login', credentials);
-      const token = response.data.token;
-      localStorage.setItem('token', token);
-      return token;
+      const response = await api.post<LoginResponse>('/login', credentials);
+      console.log('Login response:', response.data);
+      return response.data;
     } catch (error) {
-      throw new Error('Invalid credentials');
+      console.error('Login error in service:', error);
+      throw error;
     }
   },
 
-  logout: async (): Promise<void> => {
+  logout: async () => {
     try {
-      await axiosInstance.post('/logout');
-    } finally {
+      // Call the logout endpoint with the token from localStorage
+      await api.post('/logout');
+      // Clear the token from localStorage
       localStorage.removeItem('token');
+      return true;
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still remove token even if API call fails
+      localStorage.removeItem('token');
+      throw error;
     }
-  },
-
-  getToken: (): string | null => {
-    return localStorage.getItem('token');
-  },
+  }
 };
