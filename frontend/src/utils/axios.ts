@@ -32,11 +32,17 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Clear any stored tokens or session information
-      localStorage.removeItem('token');
+      const currentPath = window.location.pathname;
       
-      // Redirect to the login page
-      window.location.href = '/login';
+      // Check if the current path is not the login page
+      if (currentPath !== '/login') {
+        console.log("Redirecting to login...");
+        // Clear any stored tokens or session information
+        localStorage.removeItem('token');
+        
+        // Redirect to the login page
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
