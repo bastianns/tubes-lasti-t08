@@ -2,17 +2,16 @@ from functools import wraps
 from flask import jsonify, request
 import jwt
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import extract  # Added this import
 from config import Config
 from app import db
+from models import Transaksi  # Changed from app.models import Transaksi
 from state import blacklisted_tokens
-from models import Transaksi
 
 def create_token(user_id):
     """Create JWT token for authentication"""
     payload = {
         'user_id': user_id,
-        'exp': datetime.now(timezone.utc) + timedelta(hours=1)
+        'exp': datetime.now(timezone.utc) + timedelta(hours=12)
     }
     return jwt.encode(payload, Config.JWT_SECRET_KEY, algorithm='HS256')
 
@@ -35,10 +34,12 @@ def token_required(f):
 
 def calculate_monthly_sales(year=None, month=None):
     """Calculate total sales for a given month"""
+    from sqlalchemy import extract
+    
     query = Transaksi.query
     if year and month:
         query = query.filter(
             extract('year', Transaksi.waktu_transaksi) == year,
             extract('month', Transaksi.waktu_transaksi) == month
         )
-    return query.with_entities(db.func.sum(Transaksi.amount)).scalar() or 0
+    return query.with_entities(db.func.sum(Transaksi.total_amount)).scalar() or 0

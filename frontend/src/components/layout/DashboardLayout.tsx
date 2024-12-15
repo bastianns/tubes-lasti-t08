@@ -35,7 +35,6 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Sidebar */}
       <div
         className={`fixed top-0 left-0 h-full w-64 bg-white shadow-lg transition-transform ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -65,13 +64,11 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         </nav>
       </div>
 
-      {/* Main Content */}
       <div
         className={`${
           isSidebarOpen ? "ml-64" : "ml-0"
         } min-h-screen transition-margin duration-300`}
       >
-        {/* Top Bar */}
         <div className="bg-white shadow-sm">
           <div className="flex items-center justify-between px-6 py-4">
             <button
@@ -102,9 +99,8 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           </div>
         </div>
 
-        {/* Page Content */}
         <div className="p-6">
-          {children}  {/* This line was missing - it's crucial for rendering the dashboard content */}
+          {children}
         </div>
       </div>
     </div>

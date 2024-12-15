@@ -28,20 +28,32 @@ CREATE TABLE IF NOT EXISTS inventory (
     stok_tersedia INTEGER DEFAULT 0,
     stok_minimum INTEGER DEFAULT 10,
     harga FLOAT NOT NULL,
-    waktu_pembaruan TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    waktu_pembaruan TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (sku, batch_number)
 );
 
 CREATE TABLE IF NOT EXISTS transaksi (
     id_transaksi SERIAL PRIMARY KEY,
+    total_amount FLOAT NOT NULL,
+    waktu_transaksi TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS transaksi_detail (
+    id SERIAL PRIMARY KEY,
+    id_transaksi INTEGER NOT NULL,
     sku VARCHAR(100) NOT NULL,
     batch_number VARCHAR(50) NOT NULL,
-    jenis_transaksi VARCHAR(50) NOT NULL,
     jumlah INTEGER NOT NULL,
-    amount FLOAT NOT NULL,
-    waktu_transaksi TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    harga_satuan FLOAT NOT NULL,
+    subtotal FLOAT NOT NULL,
+    FOREIGN KEY (id_transaksi) REFERENCES transaksi(id_transaksi) 
+        ON DELETE CASCADE,  
     FOREIGN KEY (sku, batch_number) REFERENCES inventory(sku, batch_number)
 );
+
+-- Create index for better query performance
+CREATE INDEX idx_transaksi_detail_id_transaksi ON transaksi_detail(id_transaksi);
+CREATE INDEX idx_transaksi_detail_sku_batch ON transaksi_detail(sku, batch_number);
 
 -- Grant table permissions
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO apotek_user;

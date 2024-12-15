@@ -1,6 +1,6 @@
 # routes.py
 from flask import Blueprint, jsonify, request
-from models import User, Inventory, Transaksi
+from models import User, Inventory, Transaksi, TransaksiDetail
 from app import db
 from utils import token_required, create_token, calculate_monthly_sales
 from state import blacklisted_tokens
@@ -24,25 +24,24 @@ def login():
     # Detailed logging
     logger.info(f"Login attempt - Username: {username}")
     
-    # Find the user
-    user = User.query.filter_by(username=username).first()
-    
-    if not user:
-        logger.warning(f"User not found: {username}")
-        return jsonify({'message': 'Invalid credentials', 'debug': 'User not found'}), 401
-    
-    # Debug: print the stored password hash
-    logger.info(f"Stored password hash: {user.password_hash}")
-    
-    # Check password
-    password_check = user.check_password(password)
-    logger.info(f"Password check result: {password_check}")
-    
-    if password_check:
-        token = create_token(user.id)
-        return jsonify({'token': token}), 200
-    
-    return jsonify({'message': 'Invalid credentials', 'debug': 'Password check failed'}), 401
+    try:
+        # Find the user
+        user = User.query.filter_by(username=username).first()
+        
+        if not user:
+            logger.warning(f"User not found: {username}")
+            return jsonify({'message': 'Invalid credentials'}), 401
+        
+        # Check password
+        if user.check_password(password):
+            token = create_token(user.id)
+            return jsonify({'token': token}), 200
+        
+        return jsonify({'message': 'Invalid credentials'}), 401
+        
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        return jsonify({'message': 'Login failed', 'error': str(e)}), 500
 
 # 2. Logout endpoint
 @main.route('/logout', methods=['POST'])
@@ -91,26 +90,15 @@ def get_inventory():
 @main.route('/inventory/low-stock', methods=['GET'])
 @token_required
 def get_low_stock():
-    total_stock = db.session.query(
-        Inventory.sku,
-        db.func.sum(Inventory.stok_tersedia).label('total_stok'),
-        db.func.min(Inventory.nama_item).label('nama_item'),  
-        db.func.min(Inventory.stok_minimum).label('stok_minimum')  
-    ).group_by(Inventory.sku).subquery()
-    
-    low_stock_items = db.session.query(
-        total_stock.c.sku,
-        total_stock.c.nama_item,
-        total_stock.c.total_stok,
-        total_stock.c.stok_minimum
-    ).filter(
-        total_stock.c.total_stok <= total_stock.c.stok_minimum
+    low_stock_items = Inventory.query.filter(
+        Inventory.stok_tersedia < Inventory.stok_minimum
     ).all()
     
     return jsonify([{
         'sku': item.sku,
+        'batch_number': item.batch_number,
         'nama_item': item.nama_item,
-        'stok_tersedia': item.total_stok,
+        'stok_tersedia': item.stok_tersedia,
         'stok_minimum': item.stok_minimum
     } for item in low_stock_items]), 200
 
@@ -127,28 +115,41 @@ def update_inventory(sku, batch_number):
         
         if not inventory:
             return jsonify({
-                'message': 'Item not found',
-                'details': f'No inventory found with SKU {sku} and batch number {batch_number}'
+                'message': 'Item not found'
             }), 404
         
-        # List of allowed fields to update
-        allowed_fields = {'nama_item', 'kategori', 'stok_tersedia', 'stok_minimum', 'harga'}
+        sku_consistent_fields = {'nama_item', 'kategori', 'stok_minimum', 'harga'}
+        batch_specific_fields = {'stok_tersedia'}
         
-        # Only update allowed fields
-        for key, value in data.items():
-            if key in allowed_fields:
+        if any(field in data for field in sku_consistent_fields):
+            update_data = {k: v for k, v in data.items() if k in sku_consistent_fields}
+            if update_data:
+                Inventory.query.filter(
+                    Inventory.sku == sku
+                ).update(update_data)
+        
+        batch_updates = {k: v for k, v in data.items() if k in batch_specific_fields}
+        if batch_updates:
+            for key, value in batch_updates.items():
                 setattr(inventory, key, value)
-            # Optionally warn about invalid fields
-            else:
-                logger.warning(f"Attempted to update invalid/protected field: {key}")
         
         db.session.commit()
+        db.session.refresh(inventory)
+        
         return jsonify({
             'message': 'Inventory updated successfully',
-            'sku': sku,
-            'batch_number': batch_number
+            'inventory': {
+                'sku': inventory.sku,
+                'batch_number': inventory.batch_number,
+                'nama_item': inventory.nama_item,
+                'kategori': inventory.kategori,
+                'stok_tersedia': inventory.stok_tersedia,
+                'stok_minimum': inventory.stok_minimum,
+                'harga': inventory.harga,
+                'waktu_pembaruan': inventory.waktu_pembaruan.isoformat()
+            }
         }), 200
-        
+            
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error updating inventory: {str(e)}")
@@ -190,9 +191,8 @@ def health_check():
 @token_required
 def create_inventory():
     data = request.json
-    required_fields = {'sku', 'batch_number', 'nama_item', 'harga'}
+    required_fields = {'sku', 'batch_number','kategori', 'nama_item', 'harga'}
     
-    # Validate required fields
     if not all(field in data for field in required_fields):
         return jsonify({
             'message': 'Missing required fields',
@@ -200,7 +200,14 @@ def create_inventory():
         }), 400
         
     try:
-        # Check if inventory with same SKU and batch number already exists
+        existing_sku = Inventory.query.filter_by(sku=data['sku']).first()
+        
+        if existing_sku:
+            data['nama_item'] = existing_sku.nama_item
+            data['kategori'] = existing_sku.kategori
+            data['stok_minimum'] = existing_sku.stok_minimum
+            data['harga'] = existing_sku.harga
+        
         existing_inventory = Inventory.query.filter_by(
             sku=data['sku'],
             batch_number=data['batch_number']
@@ -208,11 +215,9 @@ def create_inventory():
         
         if existing_inventory:
             return jsonify({
-                'message': 'Inventory already exists',
-                'details': f"SKU {data['sku']} with batch number {data['batch_number']} is already in the system"
+                'message': 'Inventory already exists'
             }), 409
-            
-        # Create new inventory
+        
         new_inventory = Inventory(**data)
         db.session.add(new_inventory)
         db.session.commit()
@@ -230,7 +235,7 @@ def create_inventory():
                 'waktu_pembaruan': new_inventory.waktu_pembaruan.isoformat()
             }
         }), 201
-        
+            
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error creating inventory: {str(e)}")
@@ -241,8 +246,8 @@ def create_inventory():
 @token_required
 def delete_inventory(sku, batch_number):
     try:
-        # Check for existing transactions
-        existing_transactions = Transaksi.query.filter_by(
+        # Check for existing transactions in TransaksiDetail instead of Transaksi
+        existing_transactions = TransaksiDetail.query.filter_by(
             sku=sku,
             batch_number=batch_number
         ).first()
@@ -290,12 +295,15 @@ def get_transactions():
         transactions = Transaksi.query.all()
         return jsonify([{
             'id_transaksi': t.id_transaksi,
-            'sku': t.sku,
-            'batch_number': t.batch_number,
-            'jenis_transaksi': t.jenis_transaksi,
-            'jumlah': t.jumlah,
-            'amount': t.amount,
-            'waktu_transaksi': t.waktu_transaksi.isoformat() if t.waktu_transaksi else None
+            'total_amount': t.total_amount,
+            'waktu_transaksi': t.waktu_transaksi.isoformat() if t.waktu_transaksi else None,
+            'items': [{
+                'sku': detail.sku,
+                'batch_number': detail.batch_number,
+                'jumlah': detail.jumlah,
+                'harga_satuan': detail.harga_satuan,
+                'subtotal': detail.subtotal
+            } for detail in t.details]
         } for t in transactions]), 200
     except Exception as e:
         logger.error(f"Error fetching transactions: {str(e)}")
@@ -306,180 +314,215 @@ def get_transactions():
 @token_required
 def create_transaction():
     data = request.json
-    required_fields = {'sku', 'batch_number', 'jumlah', 'amount'}
-    
-    if not all(field in data for field in required_fields):
+    if not isinstance(data.get('items'), list) or not data['items']:
         return jsonify({
-            'message': 'Missing required fields',
-            'required_fields': list(required_fields)
+            'message': 'At least one item is required',
+            'required_fields': ['items[].sku', 'items[].batch_number', 'items[].jumlah']
         }), 400
     
-    # Force transaction type to be 'pengurangan' since it's a customer purchase
-    data['jenis_transaksi'] = 'pengurangan'
-    transaction = None
-        
     try:
-        with db.session.begin():
-            # Validate inventory exists and lock for update
-            inventory = Inventory.query.filter_by(
-                sku=data['sku'], 
-                batch_number=data['batch_number']
-            ).with_for_update().first()
-            
-            if not inventory:
-                return jsonify({
-                    'message': 'Product not found',
-                    'details': f"No product found with SKU {data['sku']} and batch number {data['batch_number']}"
-                }), 404
-            
-            # Validate stock availability
-            if inventory.stok_tersedia < data['jumlah']:
-                return jsonify({
-                    'message': 'Insufficient stock',
-                    'available_stock': inventory.stok_tersedia,
-                    'requested_quantity': data['jumlah']
-                }), 400
-            
-            # Validate amount matches product price
-            expected_amount = inventory.harga * data['jumlah']
-            if abs(expected_amount - data['amount']) > 0.01:  # Using small delta for float comparison
-                return jsonify({
-                    'message': 'Invalid amount',
-                    'expected_amount': expected_amount,
-                    'provided_amount': data['amount']
-                }), 400
-            
-            # Update inventory
-            inventory.stok_tersedia -= data['jumlah']
-            
-            # Create transaction
-            transaction = Transaksi(**data)
-            db.session.add(transaction)
-            
-        # After successful commit, refresh the transaction to get the ID
-        db.session.refresh(transaction)
+        # Initialize variables outside the transaction block
+        total_amount = 0
+        transaction_details = []
         
+        # Start transaction
+        with db.session.begin():
+            # Process each item
+            for item in data['items']:
+                # Validate required fields
+                if not all(field in item for field in ['sku', 'batch_number', 'jumlah']):
+                    raise ValueError("Missing required fields in item")
+                
+                # Get inventory and lock for update
+                inventory = Inventory.query.filter_by(
+                    sku=item['sku'], 
+                    batch_number=item['batch_number']
+                ).with_for_update().first()
+                
+                if not inventory:
+                    raise ValueError(f"Product not found: SKU {item['sku']}, Batch {item['batch_number']}")
+                
+                # Validate stock availability
+                if inventory.stok_tersedia < item['jumlah']:
+                    raise ValueError(f"Insufficient stock for {inventory.nama_item}")
+                
+                # Calculate subtotal
+                subtotal = inventory.harga * item['jumlah']
+                total_amount += subtotal
+                
+                # Update inventory
+                inventory.stok_tersedia -= item['jumlah']
+                
+                # Create transaction detail
+                transaction_details.append({
+                    'sku': item['sku'],
+                    'batch_number': item['batch_number'],
+                    'jumlah': item['jumlah'],
+                    'harga_satuan': inventory.harga,
+                    'subtotal': subtotal
+                })
+            
+            # Create main transaction
+            transaction = Transaksi(total_amount=total_amount)
+            db.session.add(transaction)
+            db.session.flush()  # Get transaction ID
+            
+            # Create transaction details
+            for detail in transaction_details:
+                detail['id_transaksi'] = transaction.id_transaksi
+                db.session.add(TransaksiDetail(**detail))
+            
+            # No need to call commit() - the context manager will handle it
+            
+        # After successful commit, return response
         return jsonify({
-            'message': 'Purchase successful',
+            'message': 'Transaction successful',
             'transaction_id': transaction.id_transaksi,
-            'details': {
-                'product': inventory.nama_item,
-                'quantity': data['jumlah'],
-                'amount': data['amount'],
-                'remaining_stock': inventory.stok_tersedia
-            }
+            'total_amount': total_amount,
+            'details': transaction_details
         }), 201
             
+    except ValueError as e:
+        # No need to call rollback() - the context manager will handle it
+        return jsonify({'message': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error processing purchase: {str(e)}")
-        return jsonify({'error': 'Failed to process purchase'}), 400
+        logger.error(f"Error processing transaction: {str(e)}")
+        return jsonify({'error': 'Failed to process transaction'}), 400
 
 # Update Transaction
 @main.route('/transactions/<int:transaction_id>', methods=['PUT'])
 @token_required
 def update_transaction(transaction_id):
     data = request.json
-    required_fields = {'jumlah', 'amount'}
-    
-    if not all(field in data for field in required_fields):
+    if not isinstance(data.get('items'), list) or not data['items']:
         return jsonify({
-            'message': 'Missing required fields',
-            'required_fields': list(required_fields)
+            'message': 'At least one item is required',
+            'required_fields': ['items[].sku', 'items[].batch_number', 'items[].jumlah']
         }), 400
 
     try:
+        # Initialize variables outside transaction block
+        total_amount = 0
+        new_details = []
+
         with db.session.begin():
+            # Get transaction and validate
             transaction = Transaksi.query.filter_by(id_transaksi=transaction_id).first()
             if not transaction:
                 return jsonify({'message': 'Transaction not found'}), 404
             
-            # Store old quantity for inventory adjustment
-            old_quantity = transaction.jumlah
+            # Revert all inventory changes
+            for detail in transaction.details:
+                inventory = Inventory.query.filter_by(
+                    sku=detail.sku,
+                    batch_number=detail.batch_number
+                ).with_for_update().first()
+                
+                if inventory:
+                    inventory.stok_tersedia += detail.jumlah
             
-            # Get inventory and lock for update
-            inventory = Inventory.query.filter_by(
-                sku=transaction.sku,
-                batch_number=transaction.batch_number
-            ).with_for_update().first()
+            # Delete old transaction details
+            TransaksiDetail.query.filter_by(id_transaksi=transaction_id).delete()
             
-            if not inventory:
-                return jsonify({'message': 'Product not found'}), 404
+            # Process new items
+            for item in data['items']:
+                # Validate required fields
+                if not all(field in item for field in ['sku', 'batch_number', 'jumlah']):
+                    raise ValueError("Missing required fields in item")
+                
+                # Get inventory and lock for update
+                inventory = Inventory.query.filter_by(
+                    sku=item['sku'],
+                    batch_number=item['batch_number']
+                ).with_for_update().first()
+                
+                if not inventory:
+                    raise ValueError(f"Product not found: SKU {item['sku']}, Batch {item['batch_number']}")
+                
+                # Validate stock availability
+                if inventory.stok_tersedia < item['jumlah']:
+                    raise ValueError(f"Insufficient stock for {inventory.nama_item}")
+                
+                # Calculate subtotal
+                subtotal = inventory.harga * item['jumlah']
+                total_amount += subtotal
+                
+                # Update inventory
+                inventory.stok_tersedia -= item['jumlah']
+                
+                # Create new transaction detail
+                new_detail = TransaksiDetail(
+                    id_transaksi=transaction_id,
+                    sku=item['sku'],
+                    batch_number=item['batch_number'],
+                    jumlah=item['jumlah'],
+                    harga_satuan=inventory.harga,
+                    subtotal=subtotal
+                )
+                db.session.add(new_detail)
+                new_details.append(new_detail)
             
-            # Revert old transaction effect (add back the old quantity)
-            inventory.stok_tersedia += old_quantity
+            # Update transaction total
+            transaction.total_amount = total_amount
             
-            # Validate new amount matches product price
-            expected_amount = inventory.harga * data['jumlah']
-            if abs(expected_amount - data['amount']) > 0.01:
-                return jsonify({
-                    'message': 'Invalid amount',
-                    'expected_amount': expected_amount,
-                    'provided_amount': data['amount']
-                }), 400
+        # Return response after successful commit
+        return jsonify({
+            'message': 'Transaction updated successfully',
+            'transaction_id': transaction_id,
+            'total_amount': total_amount,
+            'details': [{
+                'sku': detail.sku,
+                'batch_number': detail.batch_number,
+                'jumlah': detail.jumlah,
+                'harga_satuan': detail.harga_satuan,
+                'subtotal': detail.subtotal
+            } for detail in new_details]
+        }), 200
             
-            # Check if new quantity is available in stock
-            if inventory.stok_tersedia < data['jumlah']:
-                return jsonify({
-                    'message': 'Insufficient stock',
-                    'available_stock': inventory.stok_tersedia,
-                    'requested_quantity': data['jumlah']
-                }), 400
-            
-            # Update transaction
-            transaction.jumlah = data['jumlah']
-            transaction.amount = data['amount']
-            
-            # Apply new effect on inventory (subtract new quantity)
-            inventory.stok_tersedia -= transaction.jumlah
-            
-            return jsonify({
-                'message': 'Purchase updated successfully',
-                'transaction_id': transaction_id,
-                'details': {
-                    'product': inventory.nama_item,
-                    'quantity': transaction.jumlah,
-                    'amount': transaction.amount,
-                    'remaining_stock': inventory.stok_tersedia
-                }
-            }), 200
-            
+    except ValueError as e:
+        return jsonify({'message': str(e)}), 400
     except Exception as e:
-        logger.error(f"Error updating purchase: {str(e)}")
-        return jsonify({'error': 'Failed to update purchase'}), 400
+        logger.error(f"Error updating transaction: {str(e)}")
+        return jsonify({'error': 'Failed to update transaction'}), 400
 
+# Delete Transaction
 @main.route('/transactions/<int:transaction_id>', methods=['DELETE'])
 @token_required
 def delete_transaction(transaction_id):
     try:
+        details = []
+
         with db.session.begin():
+            # Get transaction and validate
             transaction = Transaksi.query.filter_by(id_transaksi=transaction_id).first()
             if not transaction:
                 return jsonify({'message': 'Transaction not found'}), 404
             
-            # Get inventory and lock for update
-            inventory = Inventory.query.filter_by(
-                sku=transaction.sku,
-                batch_number=transaction.batch_number
-            ).with_for_update().first()
+            # Revert inventory changes
+            for detail in transaction.details:
+                inventory = Inventory.query.filter_by(
+                    sku=detail.sku,
+                    batch_number=detail.batch_number
+                ).with_for_update().first()
+                
+                if inventory:
+                    inventory.stok_tersedia += detail.jumlah
+                    details.append({
+                        'product': inventory.nama_item,
+                        'returned_quantity': detail.jumlah,
+                        'current_stock': inventory.stok_tersedia
+                    })
             
-            if not inventory:
-                return jsonify({'message': 'Product not found'}), 404
-            
-            # Revert transaction effect (add back the quantity since it was a purchase)
-            inventory.stok_tersedia += transaction.jumlah
-            
-            # Delete transaction
+            # Delete transaction (cascade will handle details)
             db.session.delete(transaction)
             
-            return jsonify({
-                'message': 'Purchase cancelled successfully',
-                'details': {
-                    'product': inventory.nama_item,
-                    'returned_quantity': transaction.jumlah,
-                    'current_stock': inventory.stok_tersedia
-                }
-            }), 200
+        # Return response after successful commit
+        return jsonify({
+            'message': 'Transaction cancelled successfully',
+            'transaction_id': transaction_id,
+            'details': details
+        }), 200
             
     except Exception as e:
-        logger.error(f"Error cancelling purchase: {str(e)}")
-        return jsonify({'error': 'Failed to cancel purchase'}), 400
+        logger.error(f"Error cancelling transaction: {str(e)}")
+        return jsonify({'error': 'Failed to cancel transaction'}), 400

@@ -31,10 +31,12 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    console.error('Response error:', error);
-    if (error.response) {
-      console.error('Error data:', error.response.data);
-      console.error('Error status:', error.response.status);
+    if (error.response && error.response.status === 401) {
+      // Clear any stored tokens or session information
+      localStorage.removeItem('token');
+      
+      // Redirect to the login page
+      window.location.href = '/auth/login';
     }
     return Promise.reject(error);
   }
