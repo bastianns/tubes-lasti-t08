@@ -302,11 +302,14 @@ def delete_inventory(sku, batch_number):
         return jsonify({'error': str(e)}), 400
 
 # Get all transactions
+# Get all transactions
 @main.route('/transactions', methods=['GET'])
 @token_required
 def get_transactions():
     try:
-        transactions = Transaksi.query.all()
+        # Join with Inventory to get nama_item
+        transactions = db.session.query(Transaksi).all()
+        
         return jsonify([{
             'id_transaksi': t.id_transaksi,
             'total_amount': t.total_amount,
@@ -314,6 +317,10 @@ def get_transactions():
             'items': [{
                 'sku': detail.sku,
                 'batch_number': detail.batch_number,
+                'nama_item': Inventory.query.filter_by(
+                    sku=detail.sku,
+                    batch_number=detail.batch_number
+                ).first().nama_item,
                 'jumlah': detail.jumlah,
                 'harga_satuan': detail.harga_satuan,
                 'subtotal': detail.subtotal
