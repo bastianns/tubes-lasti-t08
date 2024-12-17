@@ -21,7 +21,7 @@ export const StockStatus = ({ items }: Props) => {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-gray-800">Inventory Status</h2>
+      <h2 className="text-xl font-semibold text-gray-800">Low Inventory Status</h2>
       
       {items.length === 0 ? (
         <div className="bg-green-100 border border-green-500 text-green-700 px-6 py-4 rounded-lg">
@@ -51,7 +51,7 @@ export const StockStatus = ({ items }: Props) => {
                 </div>
                 <div className="text-right ml-4 flex-shrink-0">
                   <p className="text-2xl font-bold">{item.stok_tersedia}</p>
-                  <p className="text-sm">of {item.stok_minimum} min</p>
+                  <p className="text-sm">Min. Stock : {item.stok_minimum}</p>
                 </div>
               </div>
               <div className="mt-4">

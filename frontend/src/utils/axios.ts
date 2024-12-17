@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:5000', // Make sure this matches your Flask server port
+  baseURL: import.meta.env.VITE_API_URL,  // Use the environment variable
   headers: {
     'Content-Type': 'application/json',
   },
@@ -13,7 +13,7 @@ api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;  // Add this - very important!
+      config.headers.Authorization = `Bearer ${token}`;
     }
     console.log('Making request to:', config.url, config.data);
     return config;

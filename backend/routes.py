@@ -90,16 +90,30 @@ def get_inventory():
 @main.route('/inventory/low-stock', methods=['GET'])
 @token_required
 def get_low_stock():
-    low_stock_items = Inventory.query.filter(
-        Inventory.stok_tersedia < Inventory.stok_minimum
+    # Use SQLAlchemy's func for aggregation
+    from sqlalchemy import func
+    
+    # Query that aggregates stock levels by SKU
+    low_stock_items = db.session.query(
+        Inventory.sku,
+        # These values are consistent per SKU, so min/max will give the same result
+        func.min(Inventory.nama_item).label('nama_item'),
+        func.min(Inventory.stok_minimum).label('stok_minimum'),
+        # Sum up all available stock across batches
+        func.sum(Inventory.stok_tersedia).label('total_stock')
+    ).group_by(
+        Inventory.sku
+    ).having(
+        # Compare total stock against minimum stock level
+        func.sum(Inventory.stok_tersedia) < func.min(Inventory.stok_minimum)
     ).all()
     
+    # Format response
     return jsonify([{
         'sku': item.sku,
-        'batch_number': item.batch_number,
         'nama_item': item.nama_item,
-        'stok_tersedia': item.stok_tersedia,
-        'stok_minimum': item.stok_minimum
+        'stok_tersedia': item.total_stock,
+        'stok_minimum': item.stok_minimum,
     } for item in low_stock_items]), 200
 
 # 5. Update inventory
