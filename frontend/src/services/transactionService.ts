@@ -5,6 +5,7 @@ import api from '../utils/axios';
 
 interface TransactionItem {
   sku: string;
+  nama_item: string;
   batch_number: string;
   jumlah: number;
   harga_satuan: number;

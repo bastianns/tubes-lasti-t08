@@ -527,8 +527,8 @@ const TransactionPage = () => {
                                     key={`${item.sku}-${item.batch_number}`}
                                     className="text-sm"
                                   >
-                                    {index + 1}. {item.sku} ({item.jumlah}{" "}
-                                    units)
+                                    {index + 1}. {item.nama_item} ({item.jumlah}{" "}
+                                    pcs)
                                   </div>
                                 ))}
                               </div>
