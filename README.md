@@ -14,6 +14,7 @@ Pastikan sudah mengunduh Docker-Desktop dan juga Git CLI, serta mematikan layana
 4. Prototype dapat dijalankan dengan membuka http://localhost pada browser
 * Apabila tidak bisa disarankan langsung mengakses prototype melalui deployment yang sudah ada (http://apotek-erp.my.id/)
 
+# Deskripsi Detail Prototype
 ## Fitur Utama
 
 - **Autentikasi Pengguna**
