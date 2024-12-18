@@ -1,5 +1,12 @@
-# Sistem ERP untuk Manajemen Apotek
+# Prototype Layanan Sistem dan Teknologi Informasi - Kelompok 8
+## Anggota
+- Arvyno Pranata Limahardja - 18222007
+- David Dewanto - 18222027
+- Ricky Wijaya - 18222043
+- Bastian Natanael Sibarani - 18222053
+- Dedy Hofmanindo Saragih - 18222085
 
+# Sistem ERP untuk Manajemen Apotek
 Proyek ini merupakan implementasi prototipe sistem Enterprise Resource Planning (ERP) sederhana untuk manajemen apotek, yang dikembangkan sebagai salah satu requirement tugas dari mata kuliah II3120 Layanan Sistem dan Teknologi Informasi di program studi Sistem dan Teknologi Informasi Institut Teknologi Bandung (ITB). Sistem ini membantu apotek dalam mengelola inventaris, melacak transaksi, dan memantau kinerja penjualan.
 
 # Cara Mengakses Prototype
@@ -323,12 +330,3 @@ CREATE TABLE inventory (
   - Hapus penyimpanan browser
   - Periksa masa berlaku token
   - Verifikasi kredensial
-
-## Kontak
-
-Untuk pertanyaan lebih lanjut, silakan hubungi tim pengembang:
-- Arvyno Pranata Limahardja - 18222007
-- David Dewanto - 18222027
-- Ricky Wijaya - 18222043
-- Bastian Natanael Sibarani - 18222053
-- Dedy Hofmanindo Saragih - 18222085
