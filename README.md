@@ -2,6 +2,18 @@
 
 Proyek ini merupakan implementasi prototipe sistem Enterprise Resource Planning (ERP) sederhana untuk manajemen apotek, yang dikembangkan sebagai salah satu requirement tugas dari mata kuliah II3120 Layanan Sistem dan Teknologi Informasi di program studi Sistem dan Teknologi Informasi Institut Teknologi Bandung (ITB). Sistem ini membantu apotek dalam mengelola inventaris, melacak transaksi, dan memantau kinerja penjualan.
 
+# Cara Mengakses Prototype
+## Website (Disarankan)
+Dapat mengakses prototype secara langsung melalui http://apotek-erp.my.id/
+
+## Local (Tidak Disarankan)
+Pastikan sudah mengunduh Docker-Desktop dan juga Git CLI, serta mematikan layanan Postgres (apabila sudah pernah mengunduh dan menjalankan Postgres melalui services.msc)
+1. Masuk ke dalam folder project yang diinginkan
+2. Lakukan git clone dengan membuka terminal dan memasukkan "git clone "https://github.com/bastianns/tubes-lasti-t08.git""
+3. Setelah itu jalankan "docker-compose up"
+4. Prototype dapat dijalankan dengan membuka http://localhost pada browser
+* Apabila tidak bisa disarankan langsung mengakses prototype melalui deployment yang sudah ada (http://apotek-erp.my.id/)
+
 ## Fitur Utama
 
 - **Autentikasi Pengguna**
